@@ -2,6 +2,7 @@
 name = "plag"
 version = "0.1.0"
 authors = ["Oskari Timperi <oskari.timperi@iki.fi>"]
+license = "GPL-3.0-or-later"
 
 [dependencies]
 geojson = "0.13.0"
