@@ -125,12 +125,14 @@ fn get_longitude(reader: &exif::Reader) -> Result<f64> {
 
 enum Property {
     Filename,
+    Path,
 }
 
 impl std::fmt::Display for Property {
     fn fmt(&self, w: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
             Property::Filename => write!(w, "filename"),
+            Property::Path => write!(w, "path"),
         }
     }
 }
@@ -149,7 +151,11 @@ fn get_feature(filename: &Path, properties: &[Property]) -> Result<Feature> {
     for prop in properties {
         let key = prop.to_string();
         let value = match prop {
-            Property::Filename => to_value(filename.file_name().unwrap().to_string_lossy())
+            Property::Filename => to_value(filename.file_name().unwrap().to_string_lossy()),
+            Property::Path => {
+                let path = filename.canonicalize()?;
+                to_value(path.to_string_lossy())
+            }
         };
         props.insert(key, value.unwrap());
     }
@@ -189,6 +195,7 @@ fn main() {
         for prop in requested_properties {
             match prop {
                 "filename" => valid_properties.push(Property::Filename),
+                "path" => valid_properties.push(Property::Path),
                 _ => {
                     eprintln!("unknown property: {}", prop);
                     std::process::exit(1);
