@@ -30,7 +30,7 @@ enum Error {
     IoError(std::io::Error),
     Utf8Error(std::str::Utf8Error),
     FieldMissing(exif::Tag),
-    InvalidField(&'static str),
+    InvalidField(exif::Tag, &'static str),
     ExifError(exif::Error),
 }
 
@@ -39,8 +39,8 @@ impl std::fmt::Display for Error {
         match self {
             Error::IoError(error) => write!(f, "{}", error),
             Error::Utf8Error(error) => write!(f, "{}", error),
-            Error::FieldMissing(tag) => write!(f, "{}", tag),
-            Error::InvalidField(msg) => write!(f, "invalid field: {}", msg),
+            Error::FieldMissing(tag) => write!(f, "missing field: {}", tag),
+            Error::InvalidField(tag, msg) => write!(f, "invalid field {}: {}", tag, msg),
             Error::ExifError(error) => write!(f, "{}", error),
         }
     }
@@ -83,14 +83,14 @@ fn get_degrees(reader: &exif::Reader, tag: exif::Tag) -> Result<f64> {
     match field.value {
         exif::Value::Rational(ref dms) => {
             if dms.len() != 3 {
-                return Err(Error::InvalidField("expected 3 rationals"))
+                return Err(Error::InvalidField(tag, "expected 3 rationals"))
             }
             let degrees = dms[0].to_f64();
             let min = dms[1].to_f64();
             let sec = dms[2].to_f64();
             Ok(degrees + min/60.0 + sec/3600.0)
         },
-        _ => Err(Error::InvalidField("invalid field type"))
+        _ => Err(Error::InvalidField(tag, "invalid field type"))
     }
 }
 
@@ -100,7 +100,7 @@ fn get_string(reader: &exif::Reader, tag: exif::Tag) -> Result<&str> {
         let s = s[0];
         std::str::from_utf8(s).map_err(|err| err.into())
     } else {
-        Err(Error::InvalidField("field is not a string"))
+        Err(Error::InvalidField(tag, "field is not a string"))
     }
 }
 
