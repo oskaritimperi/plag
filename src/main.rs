@@ -24,6 +24,7 @@ extern crate clap;
 use std::path::Path;
 
 use geojson::{Feature, GeoJson, Geometry, Value, FeatureCollection};
+use serde_json::{Map, to_value};
 
 #[derive(Debug)]
 enum Error {
@@ -122,12 +123,34 @@ fn get_longitude(reader: &exif::Reader) -> Result<f64> {
     Ok(longitude)
 }
 
-fn get_coordinates<P: AsRef<Path> + ?Sized>(filename: &P) -> Result<geo_types::Point<f64>> {
+enum Property {
+    Filename,
+}
+
+fn get_feature(filename: &Path, properties: &[Property]) -> Result<Feature> {
     let file = std::fs::File::open(filename)?;
+
     let reader = exif::Reader::new(&mut std::io::BufReader::new(&file))?;
+
     let latitude = get_latitude(&reader)?;
     let longitude = get_longitude(&reader)?;
-    Ok((longitude, latitude).into())
+    let point: geo_types::Point<f64> = (longitude, latitude).into();
+
+    let mut props = Map::new();
+
+    for prop in properties {
+        match prop {
+            Property::Filename => props.insert("filename".to_string(), to_value(filename.file_name().unwrap().to_string_lossy()).unwrap()),
+        };
+    }
+
+    Ok(Feature {
+        bbox: None,
+        geometry: Some(Geometry::new(Value::from(&point))),
+        id: None,
+        properties: Some(props),
+        foreign_members: None,
+    })
 }
 
 fn main() {
@@ -138,6 +161,10 @@ fn main() {
         .arg(clap::Arg::with_name("pretty")
             .long("pretty")
             .help("Output human-readable GeoJSON"))
+        .arg(clap::Arg::with_name("properties")
+            .long("properties")
+            .takes_value(true)
+            .use_delimiter(true))
         .arg(clap::Arg::with_name("files")
             .required(true)
             .multiple(true)
@@ -147,24 +174,27 @@ fn main() {
     // "files" is a required argument. Should be quite safe to unwrap.
     let files = matches.values_of_os("files").unwrap();
 
-    let features: Vec<_> = files.into_iter()
-        .map(|path| (path, get_coordinates(&path)))
-        .filter_map(|x| {
-            match x {
-                (_, Ok(coord)) => Some(coord),
-                (path, Err(err)) => {
-                    eprintln!("{}: {}", path.to_string_lossy(), err);
-                    None
+    let mut valid_properties = Vec::new();
+    if let Some(requested_properties) = matches.values_of("properties") {
+        for prop in requested_properties {
+            match prop {
+                "filename" => valid_properties.push(Property::Filename),
+                _ => {
+                    eprintln!("unknown property: {}", prop);
+                    std::process::exit(1);
                 }
             }
-        })
-        .map(|point| {
-            Feature {
-                bbox: None,
-                geometry: Some(Geometry::new(Value::from(&point))),
-                id: None,
-                properties: None,
-                foreign_members: None,
+        }
+    }
+
+    let features: Vec<_> = files.into_iter()
+        .filter_map(|path| {
+            match get_feature(Path::new(path), &valid_properties) {
+                Ok(feature) => Some(feature),
+                Err(error) => {
+                    eprintln!("{}: {}", path.to_string_lossy(), error);
+                    None
+                }
             }
         })
         .collect();
