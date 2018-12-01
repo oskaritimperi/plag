@@ -127,6 +127,14 @@ enum Property {
     Filename,
 }
 
+impl std::fmt::Display for Property {
+    fn fmt(&self, w: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Property::Filename => write!(w, "filename"),
+        }
+    }
+}
+
 fn get_feature(filename: &Path, properties: &[Property]) -> Result<Feature> {
     let file = std::fs::File::open(filename)?;
 
@@ -139,9 +147,11 @@ fn get_feature(filename: &Path, properties: &[Property]) -> Result<Feature> {
     let mut props = Map::new();
 
     for prop in properties {
-        match prop {
-            Property::Filename => props.insert("filename".to_string(), to_value(filename.file_name().unwrap().to_string_lossy()).unwrap()),
+        let key = prop.to_string();
+        let value = match prop {
+            Property::Filename => to_value(filename.file_name().unwrap().to_string_lossy())
         };
+        props.insert(key, value.unwrap());
     }
 
     Ok(Feature {
