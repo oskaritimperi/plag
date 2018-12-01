@@ -187,14 +187,32 @@ fn main() {
             .long("properties")
             .takes_value(true)
             .use_delimiter(true))
+        .arg(clap::Arg::with_name("filelist")
+            .long("filelist")
+            .takes_value(true)
+            .help("A file containing filenames")
+            .long_help("A file containing filenames. There must be one filename per line."))
         .arg(clap::Arg::with_name("files")
-            .required(true)
+            .required_unless("filelist")
             .multiple(true)
             .help("A list of photos"))
         .get_matches();
 
-    // "files" is a required argument. Should be quite safe to unwrap.
-    let files = matches.values_of_os("files").unwrap();
+    let mut all_files: Vec<std::ffi::OsString> = Vec::new();
+
+    if let Some(values) = matches.values_of_os("files") {
+        all_files.extend(values.map(|s| s.into()));
+    }
+
+    if let Some(path) = matches.value_of_os("filelist") {
+        let contents = std::fs::read_to_string(path);
+        if contents.is_err() {
+            eprintln!("error: {}: {}", path.to_string_lossy(), contents.unwrap_err());
+            std::process::exit(1);
+        }
+        let contents = contents.unwrap();
+        all_files.extend(contents.lines().map(str::trim).filter(|s| !s.is_empty()).map(|s| s.into()));
+    }
 
     let mut valid_properties = Vec::new();
     if let Some(requested_properties) = matches.values_of("properties") {
@@ -211,9 +229,9 @@ fn main() {
         }
     }
 
-    let features: Vec<_> = files.into_iter()
+    let features: Vec<_> = all_files.into_iter()
         .filter_map(|path| {
-            match get_feature(Path::new(path), &valid_properties) {
+            match get_feature(Path::new(&path), &valid_properties) {
                 Ok(feature) => Some(feature),
                 Err(error) => {
                     eprintln!("{}: {}", path.to_string_lossy(), error);
