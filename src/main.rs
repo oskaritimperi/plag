@@ -19,6 +19,7 @@ extern crate geojson;
 extern crate geo_types;
 extern crate exif;
 extern crate serde_json;
+#[macro_use]
 extern crate clap;
 
 use std::path::Path;
@@ -123,19 +124,11 @@ fn get_longitude(reader: &exif::Reader) -> Result<f64> {
     Ok(longitude)
 }
 
-enum Property {
-    Filename,
-    Path,
-    Datetime,
-}
-
-impl std::fmt::Display for Property {
-    fn fmt(&self, w: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            Property::Filename => write!(w, "filename"),
-            Property::Path => write!(w, "path"),
-            Property::Datetime => write!(w, "datetime"),
-        }
+arg_enum!{
+    enum Property {
+        Filename,
+        Path,
+        Datetime,
     }
 }
 
@@ -186,7 +179,10 @@ fn main() {
         .arg(clap::Arg::with_name("properties")
             .long("properties")
             .takes_value(true)
-            .use_delimiter(true))
+            .use_delimiter(true)
+            .help("Comma-separated list of properties to set on features.")
+            .possible_values(&Property::variants())
+            .case_insensitive(true))
         .arg(clap::Arg::with_name("filelist")
             .long("filelist")
             .takes_value(true)
@@ -214,20 +210,7 @@ fn main() {
         all_files.extend(contents.lines().map(str::trim).filter(|s| !s.is_empty()).map(|s| s.into()));
     }
 
-    let mut valid_properties = Vec::new();
-    if let Some(requested_properties) = matches.values_of("properties") {
-        for prop in requested_properties {
-            match prop {
-                "filename" => valid_properties.push(Property::Filename),
-                "path" => valid_properties.push(Property::Path),
-                "datetime" => valid_properties.push(Property::Datetime),
-                _ => {
-                    eprintln!("unknown property: {}", prop);
-                    std::process::exit(1);
-                }
-            }
-        }
-    }
+    let valid_properties = values_t!(matches.values_of("properties"), Property).unwrap_or_else(|e| e.exit());
 
     let features: Vec<_> = all_files.into_iter()
         .filter_map(|path| {
